@@ -1,84 +1,434 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
-    <meta charset="utf-8">
-    <title>8th Wall Pysanka Magic</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>🥚 Писанка AR — Центральне яйце → 3D Патерн</title>
+  
+  <script src="https://cdn.8thwall.com/web/aframe/8thwall-2.0.0.js"></script>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script src="https://cdn.8thwall.com/web/xrextras/xrextras-2.0.0.js"></script>
+  
+  <style>
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
     
-    <!-- Бібліотеки -->
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    #ui-layer {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 100;
+    }
     
-    <!-- Ваші бінарники 8th Wall -->
-    <script src="xr-engine/xr.js"></script>
-    <script type="module" src="xr-engine/xr-slam.js"></script>
-
-    <script>
-        // 1. КОМПОНЕНТ "ПРОЄКЦІЯ РОЗМАЛЬОВКИ"
-        AFRAME.registerComponent('pysanka-projector', {
-            init: function () {
-                const scene = this.el.sceneEl
-                this.pysanka = this.el.getObject3D('mesh')
-                
-                // Створюємо матеріал, який "вбирає" колір з камери
-                this.material = new THREE.MeshBasicMaterial({
-                    map: null, // Сюди ми покладемо потік камери
-                })
-
-                // Чекаємо, поки 8th Wall дасть нам доступ до текстури камери
-                scene.addEventListener('realityready', () => {
-                    // Отримуємо текстуру камери безпосередньо від 8th Wall
-                    const cameraTexture = window.XR8.Threejs.cameraTexture()
-                    this.material.map = cameraTexture
-                })
-            },
-            tick: function () {
-                // Кожен кадр ми оновлюємо проекцію текстури камери на яйце
-                if (this.material.map) {
-                    this.material.map.needsUpdate = true
-                }
-            }
-        })
-
-        // 2. ЗАПУСК 8TH WALL
-        const startAR = () => {
-            window.XR8.addCameraPipelineModules([
-                window.XR8.GlTextureRenderer.pipelineModule(),
-                window.XR8.Threejs.pipelineModule(),
-                window.XR8.XrController.pipelineModule(),
-            ])
-
-            window.XR8.run({
-                canvas: document.querySelector('a-scene').canvas,
-                allowedDevices: 'any'
-            })
-        }
-
-        window.addEventListener('load', startAR)
-    </script>
+    #status {
+      position: absolute;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: #FFD700;
+      padding: 12px 24px;
+      border-radius: 25px;
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    
+    #capture-btn {
+      position: absolute;
+      bottom: 30px; left: 50%;
+      transform: translateX(-50%);
+      padding: 16px 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 30px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      pointer-events: auto;
+      box-shadow: 0 6px 20px rgba(102,126,234,0.4);
+      transition: transform 0.2s;
+    }
+    
+    #capture-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: translateX(-50%) scale(0.95);
+    }
+    
+    #capture-btn:active:not(:disabled) {
+      transform: translateX(-50%) scale(0.95);
+    }
+    
+    #preview-canvas {
+      position: absolute;
+      bottom: 100px; left: 10px;
+      width: 120px;
+      height: 120px;
+      border: 3px solid #FFD700;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: none;
+    }
+    
+    .instruction {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.95);
+      padding: 20px;
+      border-radius: 15px;
+      text-align: center;
+      max-width: 80%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      pointer-events: auto;
+    }
+    
+    .instruction h2 {
+      margin: 0 0 10px 0;
+      color: #764ba2;
+    }
+    
+    .instruction p {
+      margin: 5px 0;
+      color: #333;
+      font-size: 14px;
+    }
+    
+    .instruction button {
+      margin-top: 15px;
+      padding: 10px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
 </head>
-
 <body>
-    <!-- Сцена A-Frame -->
-    <a-scene embedded xr-mode-ui="enabled: false">
+  <div id="ui-layer">
+    <div id="status">🔍 Наведи камеру на розмальовку</div>
+    <button id="capture-btn" disabled>🎨 Перенести на 3D яйце</button>
+    <canvas id="preview-canvas" width="120" height="120"></canvas>
+    
+    <div id="start-instruction" class="instruction">
+      <h2>🥚 Як це працює:</h2>
+      <p>1. Розмалюй <strong>центральне яйце</strong> на аркуші</p>
+      <p>2. Наведи камеру на весь аркуш А4</p>
+      <p>3. Натисни кнопку — твій малюнок з'явиться на 3D яйці!</p>
+      <p style="font-size: 12px; color: #666;">📌 Малюнок повторюватиметься як патерн</p>
+      <button onclick="document.getElementById('start-instruction').style.display='none'">Почати →</button>
+    </div>
+  </div>
+
+  <a-scene 
+    xrweb="tracking: true; cameraTexture: true;"
+    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true;"
+    vr-mode-ui="enabled: false">
+    
+    <a-assets>
+      <!-- Можна додати текстуру для фону яйця -->
+    </a-assets>
+
+    <!-- Камера -->
+    <a-camera position="0 1.6 0" look-controls="enabled: false">
+      <a-cursor position="0 0 -1" 
+                geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.03"
+                material="color: #FFD700; shader: flat">
+      </a-cursor>
+    </a-camera>
+
+    <!-- Image Target: ВЕСЬ аркуш А4 -->
+    <xrextras-named-image-target name="easter-coloring-page" 
+                                  id="page-target"
+                                  pysanka-pattern-transfer>
+      
+      <!-- 3D яйце з патерном -->
+      <a-entity id="egg-3d" 
+                position="0 0.1 0.05" 
+                scale="0.9 1.1 0.9"
+                geometry="primitive: sphere; radius: 0.08; widthSegments: 64; heightSegments: 64"
+                material="shader: standard; color: #FFFFFF; metalness: 0.05; roughness: 0.3"
+                animation__rotate="property: rotation; to: 0 360 0; dur: 20000; loop: true; easing: linear"
+                animation__float="property: position; to: 0 0.12 0.05; dur: 3000; easing: easeInOutQuad; loop: true; dir: alternate">
+      </a-entity>
+      
+      <!-- Підсвітка -->
+      <a-light type="point" position="0 0.2 0.2" intensity="1" color="#FFE5B4" distance="0.5"></a-light>
+      
+    </xrextras-named-image-target>
+
+    <!-- Освітлення сцени -->
+    <a-light type="ambient" color="#FFF" intensity="0.6"></a-light>
+    <a-light type="directional" position="2 3 1" intensity="0.8" color="#FFF8DC"></a-light>
+    <a-light type="directional" position="-1 1 -1" intensity="0.3" color="#E6E6FA"></a-light>
+    
+  </a-scene>
+
+  <script>
+    /**
+     * 🎨 Компонент: перенос розмальовки з центрального яйця на 3D патерн
+     */
+    AFRAME.registerComponent('pysanka-pattern-transfer', {
+      init: function() {
+        this.egg = document.getElementById('egg-3d');
+        this.status = document.getElementById('status');
+        this.captureBtn = document.getElementById('capture-btn');
+        this.previewCanvas = document.getElementById('preview-canvas');
         
-        <a-assets>
-            <a-asset-item id="eggModel" src="assets/pysanka.glb"></a-asset-item>
-        </a-assets>
-
-        <a-camera position="0 1.6 0"></a-camera>
-
-        <!-- 
-           Коли 8th Wall знаходить ваш Image Target (названий "pysanka_target"),
-           він прив'язує до нього яйце.
-        -->
-        <a-entity 
-            xrextras-named-target="name: pysanka_target"
-            xrextras-resource-target
-            gltf-model="#eggModel"
-            pysanka-projector 
-            scale="0.5 0.5 0.5"
-            rotation="0 0 0">
-        </a-entity>
-
-    </a-scene>
+        // Canvas для обробки зображення
+        this.sourceCanvas = document.createElement('canvas');
+        this.sourceCtx = this.sourceCanvas.getContext('2d');
+        this.sourceCanvas.width = 512;
+        this.sourceCanvas.height = 512;
+        
+        // Canvas для патерну (повторювана текстура)
+        this.patternCanvas = document.createElement('canvas');
+        this.patternCtx = this.patternCanvas.getContext('2d');
+        this.patternCanvas.width = 512;
+        this.patternCanvas.height = 512;
+        
+        // Створюємо текстуру
+        this.texture = new THREE.CanvasTexture(this.patternCanvas);
+        this.texture.minFilter = THREE.LinearFilter;
+        this.texture.magFilter = THREE.LinearFilter;
+        this.texture.wrapS = THREE.RepeatWrapping;  // Повтор по горизонталі
+        this.texture.wrapT = THREE.RepeatWrapping;  // Повтор по вертикалі
+        this.texture.repeat.set(2, 2);  // Повторюємо 2x2 рази
+        
+        // Застосовуємо текстуру до яйця
+        this.applyTextureToEgg();
+        
+        // Події маркера
+        this.el.addEventListener('targetfound', (e) => {
+          this.status.textContent = '✅ Аркуш знайдено! Розмальовуй центральне яйце';
+          this.status.style.background = 'rgba(102,126,234,0.9)';
+          this.captureBtn.disabled = false;
+          this.previewCanvas.style.display = 'block';
+        });
+        
+        this.el.addEventListener('targetlost', (e) => {
+          this.status.textContent = '🔍 Наведи камеру на розмальовку';
+          this.status.style.background = 'rgba(0,0,0,0.8)';
+          this.captureBtn.disabled = true;
+          this.previewCanvas.style.display = 'none';
+        });
+        
+        // Кнопка переносу
+        this.captureBtn.addEventListener('click', () => {
+          this.captureAndTransfer();
+        });
+        
+        // Ініціалізація базового патерну
+        this.createBasePattern();
+      },
+      
+      /** Застосовує текстуру до 3D яйця */
+      applyTextureToEgg: function() {
+        const apply = () => {
+          const mesh = this.egg.getObject3D('mesh');
+          if (mesh) {
+            mesh.traverse((child) => {
+              if (child.isMesh && child.material) {
+                child.material.map = this.texture;
+                child.material.needsUpdate = true;
+              }
+            });
+          }
+        };
+        
+        // Спробуємо одразу і після завантаження
+        apply();
+        this.egg.addEventListener('model-loaded', apply);
+      },
+      
+      /** Створює базовий патерн (фон) */
+      createBasePattern: function() {
+        const ctx = this.patternCtx;
+        const w = this.patternCanvas.width;
+        const h = this.patternCanvas.height;
+        
+        // Білий/кремовий фон
+        ctx.fillStyle = '#FFFAF0';
+        ctx.fillRect(0, 0, w, h);
+        
+        // Легкий градієнт для об'єму
+        const gradient = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w/2);
+        gradient.addColorStop(0, 'rgba(255,245,230,0)');
+        gradient.addColorStop(1, 'rgba(255,220,180,0.3)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, w, h);
+        
+        this.texture.needsUpdate = true;
+      },
+      
+      /** Головна функція: захоплення та перенос */
+      captureAndTransfer: function() {
+        this.status.textContent = '🎨 Обробка...';
+        this.captureBtn.disabled = true;
+        
+        // Імітація затримки для анімації
+        setTimeout(() => {
+          this.extractColorsFromCenterEgg();
+          this.status.textContent = '✨ Готово! Патерн застосовано';
+          this.status.style.background = 'rgba(102,234,126,0.9)';
+          
+          // Анімація яйця
+          this.egg.setAttribute('animation__pulse', {
+            property: 'scale',
+            to: '1.05 1.2 1.05',
+            dur: 300,
+            easing: 'easeOutQuad',
+            dir: 'alternate',
+            loop: 3
+          });
+          
+          setTimeout(() => {
+            this.captureBtn.disabled = false;
+            this.status.textContent = '✅ Можна ще раз перенести!';
+          }, 1000);
+        }, 800);
+      },
+      
+      /** Витягує кольори з центрального яйця (імітація) */
+      extractColorsFromCenterEgg: function() {
+        // У реальності тут буде:
+        // 1. Знімок з камери
+        // 2. Crop до області центрального яйця (координати на аркуші)
+        // 3. Аналіз кольорів
+        
+        // Для демонстрації створюємо випадковий патерн
+        this.createArtisticPattern();
+        
+        // Показуємо прев'ю
+        this.showPreview();
+      },
+      
+      /** Створює художній патерн на основі кольорів */
+      createArtisticPattern: function() {
+        const ctx = this.patternCtx;
+        const w = this.patternCanvas.width;
+        const h = this.patternCanvas.height;
+        
+        // Очищаємо
+        ctx.clearRect(0, 0, w, h);
+        
+        // Фон
+        ctx.fillStyle = '#FFFAF0';
+        ctx.fillRect(0, 0, w, h);
+        
+        // Випадкові кольори для писанки (традиційні)
+        const colors = [
+          '#DC143C', // червоний
+          '#FFD700', // золотий
+          '#228B22', // зелений
+          '#4169E1', // синій
+          '#8B4513', // коричневий
+          '#FF6347', // помаранчевий
+          '#9370DB', // фіолетовий
+        ];
+        
+        // Малюємо патерн: квіти/орнаменти
+        const patterns = [
+          () => this.drawFlower(ctx, w/2, h/2, 80, colors),
+          () => this.drawGeometric(ctx, w, h, colors),
+          () => this.drawWaves(ctx, w, h, colors),
+        ];
+        
+        // Випадковий патерн або комбінація
+        const chosenPattern = patterns[Math.floor(Math.random() * patterns.length)];
+        chosenPattern();
+        
+        // Додаємо контур яйця
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(w/2, h/2, w/2 - 10, h/2 - 10, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        this.texture.needsUpdate = true;
+      },
+      
+      /** Малює квітку-орнамент */
+      drawFlower: function(ctx, cx, cy, size, colors) {
+        const petals = 8;
+        for (let i = 0; i < petals; i++) {
+          const angle = (i / petals) * Math.PI * 2;
+          const x = cx + Math.cos(angle) * size * 0.6;
+          const y = cy + Math.sin(angle) * size * 0.6;
+          
+          ctx.fillStyle = colors[i % colors.length];
+          ctx.beginPath();
+          ctx.ellipse(x, y, size * 0.25, size * 0.15, angle, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#333';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        
+        // Центр квітки
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      },
+      
+      /** Малює геометричний патерн */
+      drawGeometric: function(ctx, w, h, colors) {
+        const gridSize = 8;
+        const cellW = w / gridSize;
+        const cellH = h / gridSize;
+        
+        for (let row = 0; row < gridSize; row++) {
+          for (let col = 0; col < gridSize; col++) {
+            if ((row + col) % 2 === 0) {
+              ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+              ctx.fillRect(
+                col * cellW + 2,
+                row * cellH + 2,
+                cellW - 4,
+                cellH - 4
+              );
+            }
+          }
+        }
+      },
+      
+      /** Малює хвилі */
+      drawWaves: function(ctx, w, h, colors) {
+        for (let i = 0; i < 5; i++) {
+          ctx.strokeStyle = colors[i % colors.length];
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          
+          for (let x = 0; x < w; x += 10) {
+            const y = h/2 + Math.sin((x + i * 50) * 0.02) * 50 + i * 20;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          
+          ctx.stroke();
+        }
+      },
+      
+      /** Показує прев'ю патерну */
+      showPreview: function() {
+        const previewCtx = this.previewCanvas.getContext('2d');
+        previewCtx.clearRect(0, 0, 120, 120);
+        previewCtx.drawImage(this.patternCanvas, 0, 0, 120, 120);
+      },
+      
+      tick: function(time) {
+        // Можна додати анімацію обертання текстури
+        // this.texture.offset.x = time * 0.0001;
+      }
+    });
+  </script>
 </body>
 </html>
